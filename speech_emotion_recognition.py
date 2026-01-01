@@ -1,15 +1,20 @@
 import os
 import librosa
+import random
+import json
 import numpy as np
+import warnings
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 import soundfile as sf   # pip install soundfile (for robust file reading)
 import tensorflow as tf
+import sounddevice as sd
+from scipy.io.wavfile import write
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, LSTM
 import random
-
+warnings.filterwarnings('ignore')
 # These three lines make your entire ML experiment predictable and repeatable, ensuring that every run of your code gives the same training results.
 tf.random.set_seed(42)
 np.random.seed(42)
@@ -124,7 +129,8 @@ model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=
 model.summary()
 
 # Train
-history = model.fit(X_train, Y_train, validation_data=(X_test, Y_test), epochs=70, batch_size=16)
+history = model.fit(X_train, Y_train, validation_data=(X_test, Y_test), epochs=35, batch_size=16)
+model.save('emotion_model.h5')
 model.evaluate(X_test, Y_test, verbose=0)
 
 # Plot accuracy
@@ -137,37 +143,84 @@ plt.show()
 loss, acc = model.evaluate(np.array(X_test), np.array(Y_test))
 print(f"Test Accuracy: {acc*100:.2f}%")
 
-
-def predict_emotion(model, voice_path):
+def record_voice():
     try:
-        # Load and preprocess
+        # Auto-increment filename
+        index = 1
+        while os.path.exists(f"DeepLearning/recording_{index}.wav"):
+            index += 1
+
+        filename = f"recording_{index}.wav"
+
+        print("🎤 Recording for EXACT 3 seconds... Speak now!")
+
+        audio = sd.rec(int(DURATION * SR), samplerate=SR, channels=1)
+        sd.wait()
+
+        write(filename, SR, audio)
+
+        print(f"✅ Saved recording: {filename}")
+        return filename
+
+    except Exception as e:
+        print("❌ Error:", e)
+        return None
+    
+def predict_emotion(model):
+    try:
+        # Step 1: record user audio (always new file)
+        voice_path = record_voice()
+
+        # Step 2: preprocess (your existing functions)
         y = load_and_fix_length(voice_path)
         feat = extract_mfcc_features(y)
-        feat = np.expand_dims(feat, axis=0)  # Add batch dimension
+        feat = np.expand_dims(feat, axis=0)
 
-        # Predict
+        # Step 3: model predict
         pred = model.predict(feat)
         pred_class = np.argmax(pred, axis=1)[0]
         confidence = float(pred[0][pred_class])
 
-        # Class label names
-        class_labels = ['neutral', 'calm', 'happy', 'sad', 'angry', 'fearful', 'disgust', 'surprised']
+        class_labels = [
+            'neutral', 'calm', 'happy', 'sad', 
+            'angry', 'fearful', 'disgust', 'surprised'
+        ]
 
-        print(f"\n🎤 File: {os.path.basename(voice_path)}")
-        print(f"Predicted Emotion: {class_labels[pred_class].upper()}")
-        print(f"Confidence: {confidence*100:.2f}%\n")
+        print(f"🎤 File: {os.path.basename(voice_path)}")
+        print(f"🧠 Predicted Emotion: {class_labels[pred_class].upper()}")
+        print(f"📊 Confidence: {confidence*100:.2f}%\n")
+
+        return class_labels[pred_class].upper(), confidence
 
     except Exception as e:
         print(f"❌ Error during prediction: {e}")
 
 # 🔁 Loop for multiple predictions
-while True:
-    voice_file = input("🎧 Enter path to your voice file (.wav): ").strip()
-    if not os.path.isfile(voice_file):
-        print("⚠️ File not found! Try again.")
-        continue
+with open("DeepLearning/dua_suggession.json", "r", encoding="utf-8") as file:
+    duas = json.load(file)
 
-    predict_emotion(model, voice_file)
+def get_random_dua(emotion):
+    if emotion not in duas:
+        return {"error": "Emotion not found in dua list"}
+
+    selected = random.choice(duas[emotion])
+    selected_video = random.choice(selected["video_links"])
+
+    return {
+        "dua_arabic": selected["dua_arabic"],
+        "dua_english": selected["dua_english"],
+        "caption": selected["caption"],
+        "video_link": selected_video
+    }
+
+
+while True:
+    # Predict emotion (records audio automatically)
+    emotion, confidence = predict_emotion(model)
+
+    # Fetch a dua for that emotion
+    dua = get_random_dua(emotion)
+    print(dua)
 
     again = input("Do you want to test another voice? (yes/no): ").strip().lower()
     if again in ['no', 'exit', 'quit']:
