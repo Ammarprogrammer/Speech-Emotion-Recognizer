@@ -1,0 +1,11 @@
+kagglehub==0.3.13
+librosa==0.11.0
+matplotlib==3.10.8
+numpy==1.26.4
+scikit_learn==1.8.0
+scipy==1.16.3
+sounddevice==0.5.3
+soundfile==0.13.1
+streamlit==1.51.0
+tensorflow==2.20.0
+tensorflow_intel==2.15.0
